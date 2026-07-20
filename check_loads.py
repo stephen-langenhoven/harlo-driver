@@ -18,7 +18,9 @@ import argparse
 import json
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import copyfile
@@ -32,6 +34,7 @@ API_URL = f"{BASE_URL}/api/load-confirmation/initiate"
 AUTH_FILE = Path(__file__).parent / ".auth" / "harlo.json"
 LOAD_COLUMN = "WBSHPGRP"
 RESULT_SHEET = "Load Status"
+_AUTH_LOCK = threading.Lock()
 
 
 def extract_loads(xlsx_path: Path, sheet: str | None) -> list[str]:
@@ -85,10 +88,11 @@ def check_one(session: requests.Session, load_number: str, retries: int = 3) -> 
             resp = session.post(API_URL, json={"loadNumber": load_number}, timeout=60)
             if resp.status_code in (401, 403):
                 tokens = getattr(session, "fallback_tokens", {})
-                if tokens and "Authorization" not in session.headers:
-                    token = tokens.get("idToken") or tokens.get("accessToken")
-                    session.headers["Authorization"] = f"Bearer {token}"
-                    continue
+                with _AUTH_LOCK:
+                    if tokens and "Authorization" not in session.headers:
+                        token = tokens.get("idToken") or tokens.get("accessToken")
+                        session.headers["Authorization"] = f"Bearer {token}"
+                        continue
                 sys.exit(
                     f"Got HTTP {resp.status_code} from the API — session expired. Run: python capture_auth.py"
                 )
@@ -160,7 +164,8 @@ def main() -> int:
     parser.add_argument("input", type=Path, help="TC export workbook (.xlsx)")
     parser.add_argument("--sheet", help="sheet name holding the data (default: first sheet)")
     parser.add_argument("--fresh", action="store_true", help="ignore the cache and re-check every load")
-    parser.add_argument("--delay", type=float, default=0.3, help="seconds between API calls (default 0.3)")
+    parser.add_argument("--delay", type=float, default=0.3, help="seconds each worker pauses between calls (default 0.3)")
+    parser.add_argument("--workers", type=int, default=4, help="parallel API calls (default 4)")
     parser.add_argument("--limit", type=int, help="only check the first N loads (for testing)")
     args = parser.parse_args()
 
@@ -183,20 +188,30 @@ def main() -> int:
 
     if pending:
         session = build_session()
+        record_lock = threading.Lock()
+        done = 0
         with cache_path.open("a") as cache:
-            for i, load_number in enumerate(pending, 1):
+
+            def check_and_record(load_number: str) -> None:
+                nonlocal done
                 entry = {
                     "loadNumber": load_number,
                     "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "response": check_one(session, load_number),
                 }
-                results[load_number] = entry
-                cache.write(json.dumps(entry) + "\n")
-                cache.flush()
                 status, _ = derive_status(entry["response"])
-                print(f"[{i}/{len(pending)}] {load_number}: {status}")
-                if i < len(pending):
+                with record_lock:
+                    results[load_number] = entry
+                    cache.write(json.dumps(entry) + "\n")
+                    cache.flush()
+                    done += 1
+                    print(f"[{done}/{len(pending)}] {load_number}: {status}")
+                if args.delay:
                     time.sleep(args.delay)
+
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                for future in [pool.submit(check_and_record, ln) for ln in pending]:
+                    future.result()
 
     counts = write_results(args.input, output_path, {ln: results[ln] for ln in loads})
     print(f"\nWrote {output_path.name} ({RESULT_SHEET!r} tab)")

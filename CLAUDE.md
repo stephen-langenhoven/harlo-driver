@@ -44,9 +44,9 @@ python check_loads.py Load_Confirmation_2026-07-20.xlsx
 ```
 
 Useful flags for `check_loads.py`: `--limit N` (smoke-test on a few loads),
-`--fresh` (ignore the cache and re-check everything), `--delay` (seconds
-between API calls, default 0.3), `--sheet` (if the data isn't on the first
-sheet).
+`--fresh` (ignore the cache and re-check everything), `--workers` (parallel
+API calls, default 4), `--delay` (seconds each worker pauses between calls,
+default 0.3), `--sheet` (if the data isn't on the first sheet).
 
 ## Output
 
