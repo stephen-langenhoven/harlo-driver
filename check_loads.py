@@ -127,13 +127,20 @@ def derive_status(response: dict) -> tuple[str, str]:
     return "Ready to Confirm", ""
 
 
+def categorize(exception_text: str) -> str:
+    """Collapse an exception into a category by masking every number, so
+    'Avg cube/lift 13.33 below min (20)' and 'Avg cube/lift 9.5 below min (20)'
+    group as 'Avg cube/lift # below min (#)'."""
+    return re.sub(r"\s+", " ", re.sub(r"\d+(?:\.\d+)?", "#", exception_text)).strip()
+
+
 def write_results(input_path: Path, output_path: Path, results: dict[str, dict]) -> dict[str, int]:
     copyfile(input_path, output_path)
     wb = load_workbook(output_path)
     if RESULT_SHEET in wb.sheetnames:
         del wb[RESULT_SHEET]
     ws = wb.create_sheet(RESULT_SHEET)
-    headers = ["Load #", "Status", "First Exception", "Checked At"]
+    headers = ["Load #", "Status", "Category", "First Exception", "Checked At"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -141,8 +148,9 @@ def write_results(input_path: Path, output_path: Path, results: dict[str, dict])
     for load_number, entry in results.items():
         status, details = derive_status(entry["response"])
         counts[status] = counts.get(status, 0) + 1
-        ws.append([load_number, status, details, entry["checked_at"]])
-    for column, width in zip(ws.columns, (12, 22, 80, 24)):
+        category = categorize(details) if status == "Exception" else ""
+        ws.append([load_number, status, category, details, entry["checked_at"]])
+    for column, width in zip(ws.columns, (12, 22, 44, 80, 24)):
         ws.column_dimensions[column[0].column_letter].width = width
     ws.auto_filter.ref = ws.dimensions
     wb.save(output_path)
@@ -218,18 +226,16 @@ def main() -> int:
     for status, count in sorted(counts.items(), key=lambda kv: -kv[1]):
         print(f"  {count:>5}  {status}")
 
-    # Tally exception texts with load/shipment numbers masked, to reveal the
-    # categories worth encoding in derive_status() once a full run is done.
-    patterns: dict[str, int] = {}
+    categories: dict[str, int] = {}
     for load_number in loads:
         status, details = derive_status(results[load_number]["response"])
         if status == "Exception" and details:
-            pattern = re.sub(r"\b\d{6,}\b", "#", details)
-            patterns[pattern] = patterns.get(pattern, 0) + 1
-    if patterns:
-        print("\nException patterns (numbers masked):")
-        for pattern, count in sorted(patterns.items(), key=lambda kv: -kv[1]):
-            print(f"  {count:>5}  {pattern}")
+            category = categorize(details)
+            categories[category] = categories.get(category, 0) + 1
+    if categories:
+        print("\nException categories:")
+        for category, count in sorted(categories.items(), key=lambda kv: -kv[1]):
+            print(f"  {count:>5}  {category}")
     return 0
 
 

@@ -52,16 +52,18 @@ default 0.3), `--sheet` (if the data isn't on the first sheet).
 
 `<input stem>_results.xlsx` — a copy of the input plus a "Load Status" tab:
 
-| Load # | Status | First Exception | Checked At |
-|---|---|---|---|
+| Load # | Status | Category | First Exception | Checked At |
+|---|---|---|---|---|
 
 Statuses: `Ready to Confirm` (no exceptions and not halted — billable),
 `Exception` (the load's first exception is in the First Exception column,
 e.g. `FLAG: 50114252 BOL not complete (ERRORED)`), `Not Ready`, `ERROR`
-(network/API failure). The `Exception` bucket is deliberately a single
-category for now: after a full run, the script prints a tally of exception
-patterns (with load/shipment numbers masked) — use that to define real
-categories in `derive_status()` in `check_loads.py`.
+(network/API failure). Category is the first exception with every number
+masked, so variants group together — e.g. `Avg cube/lift 13.33 below min
+(20)` and `Avg cube/lift 9.5 below min (20)` both categorize as
+`Avg cube/lift # below min (#)`. The run summary prints a count per
+category; to rename or merge categories, adjust `categorize()` in
+`check_loads.py`.
 
 ## Notes
 
