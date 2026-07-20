@@ -4,8 +4,8 @@ Checks the billing-readiness of loads against the Harlo load-confirmation
 service. Input is a "Ready to Confirm TC data" Excel export; the load number
 is column `WBSHPGRP` (column T). For each unique load number the tool calls
 the Harlo API and records the status. The status that matters is
-**"Load Confirmation Complete"** — it means all prerequisites are met and the
-load can be billed.
+**"Ready to Confirm"** (no exceptions, not halted) — it means all
+prerequisites are met and the load can be billed.
 
 ## How it works
 
@@ -52,15 +52,16 @@ sheet).
 
 `<input stem>_results.xlsx` — a copy of the input plus a "Load Status" tab:
 
-| Load # | Status | Details | Checked At |
+| Load # | Status | First Exception | Checked At |
 |---|---|---|---|
 
-Statuses: `Load Confirmation Complete` (billable), `Halted` (details column
-shows the exceptions, e.g. `FLAG: 50114252 BOL not complete (ERRORED)`),
-`Not Ready`, `ERROR` (network/API failure). Loads that come back successful,
-ready, and not halted but without the literal completion phrase are marked
-`No exceptions (likely complete)` — if real runs show the API's actual
-wording for a clean load, fold it into `derive_status()` in `check_loads.py`.
+Statuses: `Ready to Confirm` (no exceptions and not halted — billable),
+`Exception` (the load's first exception is in the First Exception column,
+e.g. `FLAG: 50114252 BOL not complete (ERRORED)`), `Not Ready`, `ERROR`
+(network/API failure). The `Exception` bucket is deliberately a single
+category for now: after a full run, the script prints a tally of exception
+patterns (with load/shipment numbers masked) — use that to define real
+categories in `derive_status()` in `check_loads.py`.
 
 ## Notes
 

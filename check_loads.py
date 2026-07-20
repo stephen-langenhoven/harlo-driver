@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -31,7 +32,6 @@ API_URL = f"{BASE_URL}/api/load-confirmation/initiate"
 AUTH_FILE = Path(__file__).parent / ".auth" / "harlo.json"
 LOAD_COLUMN = "WBSHPGRP"
 RESULT_SHEET = "Load Status"
-COMPLETE_PHRASE = "load confirmation complete"
 
 
 def extract_loads(xlsx_path: Path, sheet: str | None) -> list[str]:
@@ -101,23 +101,26 @@ def check_one(session: requests.Session, load_number: str, retries: int = 3) -> 
 
 
 def derive_status(response: dict) -> tuple[str, str]:
-    """Return (status, details) for one API response."""
+    """Return (status, first exception) for one API response.
+
+    Statuses beyond Ready to Confirm are one "Exception" bucket for now;
+    once a full run shows the range of exception texts they can be grouped
+    into categories here.
+    """
     if "error" in response:
         return "ERROR", response["error"]
     if not response.get("success"):
         return "ERROR", json.dumps(response)[:500]
     result = response.get("result") or {}
-    reasoning_text = " ".join(item.get("text", "") for item in result.get("reasoning") or [])
-    exceptions = "; ".join(result.get("exceptions") or [])
-    if COMPLETE_PHRASE in reasoning_text.lower():
-        return "Load Confirmation Complete", exceptions
+    exceptions = result.get("exceptions") or []
+    if exceptions:
+        return "Exception", exceptions[0]
     if result.get("halted"):
-        return "Halted", exceptions or reasoning_text[:500]
+        halts = [i.get("text", "").strip() for i in result.get("reasoning") or [] if i.get("type") == "halt"]
+        return "Exception", halts[0] if halts else "halted with no exception text"
     if not response.get("ready"):
-        return "Not Ready", exceptions
-    # success, ready, and not halted — with no exceptions this should mean the
-    # load cleared validation, but the exact wording hasn't been observed yet.
-    return "No exceptions (likely complete)", exceptions
+        return "Not Ready", ""
+    return "Ready to Confirm", ""
 
 
 def write_results(input_path: Path, output_path: Path, results: dict[str, dict]) -> dict[str, int]:
@@ -126,7 +129,7 @@ def write_results(input_path: Path, output_path: Path, results: dict[str, dict])
     if RESULT_SHEET in wb.sheetnames:
         del wb[RESULT_SHEET]
     ws = wb.create_sheet(RESULT_SHEET)
-    headers = ["Load #", "Status", "Details", "Checked At"]
+    headers = ["Load #", "Status", "First Exception", "Checked At"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -135,7 +138,7 @@ def write_results(input_path: Path, output_path: Path, results: dict[str, dict])
         status, details = derive_status(entry["response"])
         counts[status] = counts.get(status, 0) + 1
         ws.append([load_number, status, details, entry["checked_at"]])
-    for column, width in zip(ws.columns, (12, 32, 80, 24)):
+    for column, width in zip(ws.columns, (12, 22, 80, 24)):
         ws.column_dimensions[column[0].column_letter].width = width
     ws.auto_filter.ref = ws.dimensions
     wb.save(output_path)
@@ -199,6 +202,19 @@ def main() -> int:
     print(f"\nWrote {output_path.name} ({RESULT_SHEET!r} tab)")
     for status, count in sorted(counts.items(), key=lambda kv: -kv[1]):
         print(f"  {count:>5}  {status}")
+
+    # Tally exception texts with load/shipment numbers masked, to reveal the
+    # categories worth encoding in derive_status() once a full run is done.
+    patterns: dict[str, int] = {}
+    for load_number in loads:
+        status, details = derive_status(results[load_number]["response"])
+        if status == "Exception" and details:
+            pattern = re.sub(r"\b\d{6,}\b", "#", details)
+            patterns[pattern] = patterns.get(pattern, 0) + 1
+    if patterns:
+        print("\nException patterns (numbers masked):")
+        for pattern, count in sorted(patterns.items(), key=lambda kv: -kv[1]):
+            print(f"  {count:>5}  {pattern}")
     return 0
 
 
