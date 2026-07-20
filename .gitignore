@@ -1,0 +1,15 @@
+# Cached login sessions — contain live tokens, never commit
+.auth/
+
+# Spreadsheets (input exports and generated results) and Excel lock files
+*.xlsx
+~$*
+
+# Per-run response caches
+*_results.cache.jsonl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
