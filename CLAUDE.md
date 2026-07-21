@@ -64,8 +64,8 @@ e.g. `FLAG: 50114252 BOL not complete (ERRORED)`), `Not Ready`, `ERROR`
 masked, so variants group together — e.g. `Avg cube/lift 13.33 below min
 (20)` and `Avg cube/lift 9.5 below min (20)` both categorize as
 `Avg cube/lift # below min (#)`. The run summary prints a count per
-category; to rename or merge categories, adjust `categorize()` in
-`check_loads.py`.
+category with the top 3 carriers under each; to rename or merge categories,
+adjust `categorize()` in `check_loads.py`.
 
 ## Notes
 

@@ -238,16 +238,22 @@ def main() -> int:
     for status, count in sorted(counts.items(), key=lambda kv: -kv[1]):
         print(f"  {count:>5}  {status}")
 
-    categories: dict[str, int] = {}
+    categories: dict[str, dict[str, int]] = {}
     for load_number in loads:
-        status, details = derive_status(results[load_number]["response"])
+        entry = results[load_number]
+        status, details = derive_status(entry["response"])
         if status == "Exception" and details:
-            category = categorize(details)
-            categories[category] = categories.get(category, 0) + 1
+            carriers = categories.setdefault(categorize(details), {})
+            carrier = extract_carrier(entry["response"]) or "(unknown)"
+            carriers[carrier] = carriers.get(carrier, 0) + 1
     if categories:
-        print("\nException categories:")
-        for category, count in sorted(categories.items(), key=lambda kv: -kv[1]):
-            print(f"  {count:>5}  {category}")
+        print("\nException categories (top 3 carriers each):")
+        for category, carriers in sorted(categories.items(), key=lambda kv: -sum(kv[1].values())):
+            print(f"  {sum(carriers.values()):>5}  {category}")
+            for carrier, count in sorted(carriers.items(), key=lambda kv: -kv[1])[:3]:
+                print(f"          {count:>4}  {carrier}")
+            if len(carriers) > 3:
+                print(f"          +{len(carriers) - 3} more carriers")
     return 0
 
 
