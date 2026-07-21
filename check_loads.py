@@ -127,6 +127,17 @@ def derive_status(response: dict) -> tuple[str, str]:
     return "Ready to Confirm", ""
 
 
+def extract_carrier(response: dict) -> str:
+    """Pull the carrier name from the reasoning overview line, e.g.
+    'Load: 70116164 | Carrier: BISON TRANSPORT | Type: LTL'."""
+    result = response.get("result") or {}
+    for item in result.get("reasoning") or []:
+        match = re.search(r"Carrier:\s*([^|]+)", item.get("text", ""))
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
 def categorize(exception_text: str) -> str:
     """Collapse an exception into a category by masking every number, so
     'Avg cube/lift 13.33 below min (20)' and 'Avg cube/lift 9.5 below min (20)'
@@ -140,7 +151,7 @@ def write_results(input_path: Path, output_path: Path, results: dict[str, dict])
     if RESULT_SHEET in wb.sheetnames:
         del wb[RESULT_SHEET]
     ws = wb.create_sheet(RESULT_SHEET)
-    headers = ["Load #", "Status", "Category", "First Exception", "Checked At"]
+    headers = ["Load #", "Carrier", "Status", "Category", "First Exception", "Checked At"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -149,8 +160,9 @@ def write_results(input_path: Path, output_path: Path, results: dict[str, dict])
         status, details = derive_status(entry["response"])
         counts[status] = counts.get(status, 0) + 1
         category = categorize(details) if status == "Exception" else ""
-        ws.append([load_number, status, category, details, entry["checked_at"]])
-    for column, width in zip(ws.columns, (12, 22, 44, 80, 24)):
+        carrier = extract_carrier(entry["response"])
+        ws.append([load_number, carrier, status, category, details, entry["checked_at"]])
+    for column, width in zip(ws.columns, (12, 26, 22, 44, 80, 24)):
         ws.column_dimensions[column[0].column_letter].width = width
     ws.auto_filter.ref = ws.dimensions
     wb.save(output_path)

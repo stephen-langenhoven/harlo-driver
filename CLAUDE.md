@@ -52,9 +52,11 @@ default 0.3), `--sheet` (if the data isn't on the first sheet).
 
 `<input stem>_results.xlsx` — a copy of the input plus a "Load Status" tab:
 
-| Load # | Status | Category | First Exception | Checked At |
-|---|---|---|---|---|
+| Load # | Carrier | Status | Category | First Exception | Checked At |
+|---|---|---|---|---|---|
 
+Carrier is parsed from the response's reasoning overview line
+(`Load: … | Carrier: BISON TRANSPORT | Type: LTL`).
 Statuses: `Ready to Confirm` (no exceptions and not halted — billable),
 `Exception` (the load's first exception is in the First Exception column,
 e.g. `FLAG: 50114252 BOL not complete (ERRORED)`), `Not Ready`, `ERROR`
